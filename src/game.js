@@ -20,6 +20,12 @@
 		'width': 720,
 		'height': 540,
 		'map': [],
+		'strings': {
+			'en': {
+				'start': 'press enter to play sigma-z'
+			}
+		},
+		'lang': 'en',
 		'noise': new SimplexNoise('Satan Land'),
 		'frame': function() {
 			this.uiContext.clearRect(0, 0, this.width, this.height);
@@ -28,7 +34,7 @@
 			this.drawMap(this.camera.x, this.camera.y);
 			switch(this.stage) {
 				case 'title':
-					this.doPrompt('press enter to start the game');
+					this.doPrompt(this.strings[this.lang].start);
 					break;
 				case 'play':
 					var camSpeed = [
@@ -130,10 +136,18 @@
 			this.context.fillStyle = '#333';
 			this.context.fillRect(minX, minY,
 								  this.width - this.tsize * 3, this.tsize * 2);
+			var sw = Math.sin(new Date().getTime() / 500) * 2;
+			this.drawText(minX + sw / 2 + 6, minY + 16 + sw, text, true);
+		},
+		'drawText': function(minX, minY, text, centre, maxX, maxY) {
+			var strLen = text.length,
+				txtSize = 16;
+			if(centre)
+				minX += (this.width - strLen*txtSize) / 4;
 			for(var i = 0; i < text.length; i++) {
-				var maxX = ~~((this.width - this.tsize * 3) / 10),
-					maxY = ~~((this.tsize) / 2);
-				var x = ~~(i % maxX) * 16, y = ~~(i / maxX) * 16;
+				var maxX = ~~(maxX || ((this.width - this.tsize * 3) / 10)),
+					maxY = ~~(maxY || ((this.tsize) / 2));
+				var x = ~~(i % maxX) * txtSize, y = ~~(i / maxX) * txtSize;
 				var ti = {
 					'a': [ 0, 0], 'b': [ 8, 0],
 					'c': [16, 0], 'd': [24, 0],
@@ -148,13 +162,12 @@
 					'u': [64, 8], 'v': [72, 8],
 					'w': [80, 8], 'x': [88, 8],
 					'y': [0, 16], 'z': [8, 16],
-					' ': [88, 24]
+					' ': [88, 24], '-': [40, 24]
 				};
 				var tx = ti[text.charAt(i)][0],
 					ty = ti[text.charAt(i)][1];
-				var sw = Math.sin(new Date().getTime() / 500) * 2;
 				if(this.font.complete)
-					this.uiContext.drawImage(this.font, tx, ty, 8, 8, minX + x + 2 + sw / 2 + 4, minY + y + 16 + sw, 16, 16);
+					this.uiContext.drawImage(this.font, tx, ty, 8, 8, x + minX, y + minY, txtSize, txtSize);
 			}
 		},
 		'drawMap': function(pX, pY) {
