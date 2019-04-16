@@ -29,3 +29,6 @@ html:active canvas#game {
 html:active canvas#ui {
 	transform: perspective(100vh) translateZ(0) rotateX(45deg);
 }
+.paused canvas#game, .paused canvas#ui {
+	transform: none;
+}

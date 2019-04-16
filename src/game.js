@@ -1,5 +1,5 @@
 (function(self) {
-	"use strict";
+	'use strict';
 	function createElem(t,d,w) {
 		var r = document.createElement(t), k = Object.keys(d || {});
 		if(d instanceof Object) for(var i = 0; i < k.length; i++)
@@ -31,14 +31,18 @@
 		'strings': {
 			'en': {
 				'start': 'press enter to play sigma-z',
-				'dead': 'you died - refresh to replay'
+				'dead': 'you died - press enter to restart'
 			}
 		},
 		'lang': 'en',
-		'noise': new SimplexNoise('American Tune'),
+		'noise': new SimplexNoise(),
 		'fpsCounter': {
 			'fps': 0,
 			'frames': 0
+		}, 
+		'tickCounter': {
+			'tps': 0,
+			'ticks': 0
 		}, 
 		'tsize': 32,
 		'camera': { 'x': 0, 'y': 0 },
@@ -47,23 +51,32 @@
 		'n': 32,
 		'img': {
 			'font': createElem('img', { 'src': 'img/font.png' }),
-			'#039': createElem('canvas', { 'width': 8, 'height': 8 }, { 'run': function(e) {
-				var i = createElem('img', { 'src': 'img/water_still.png' }),
+			'coin': createElem('img', { 'src': 'img/sigmacoin.png' }),
+			'player': {}, // createElem('img', { 'src': 'img/player.png' }),
+			'#039': createElem('canvas', { 'width': 32, 'height': 32 }, { 'run': function(e) {
+				var i = createElem('img', { 'src': 'img/terrain.png' }),
 					c = e.getContext('2d', { 'antialias': false, 'alpha': false });
+				c.imageSmoothingEnabled = false;
 				i.onload = function() {
-					c.drawImage(i, 0, 0);
+					c.drawImage(i, 24, 8, 8, 8, 0, 0, e.width, e.height);
 				};
 			} }),
-			'#060': createElem('canvas', { 'width': 16, 'height': 16 }, { 'run': function(e) {
-				var i = createElem('img', { 'src': 'img/grass_top.png' }),
+			'#060': createElem('canvas', { 'width': 32, 'height': 32 }, { 'run': function(e) {
+				var i = createElem('img', { 'src': 'img/terrain.png' }),
 					c = e.getContext('2d', { 'antialias': false, 'alpha': false });
+				c.imageSmoothingEnabled = false;
 				i.onload = function() {
-					c.drawImage(i, 0, 0);
-					c.fillStyle = 'rgba(0, 128, 0, 0.5)';
-					c.fillRect(0, 0, 16, 16);
+					c.drawImage(i, 16, 0, 8, 8, 0, 0, e.width, e.height);
 				};
 			} }),
-			'#A84': createElem('img', { 'src': 'img/sand.png' })
+			'#A84': createElem('canvas', { 'width': 32, 'height': 32 }, { 'run': function(e) {
+				var i = createElem('img', { 'src': 'img/terrain.png' }),
+					c = e.getContext('2d', { 'antialias': false, 'alpha': false });
+				c.imageSmoothingEnabled = false;
+				i.onload = function() {
+					c.drawImage(i, 24, 0, 8, 8, 0, 0, e.width, e.height);
+				};
+			} }),
 		},
 		'colours': {
 			'#060': 70,
@@ -72,27 +85,34 @@
 			'things': ['#060', '#A84', '#039']
 		},
 		'sfx': {
-			'btnHover': createElem('audio', { 'src': 'sfx/btn-hover.wav', 'volume': 0.75 }),
-			'btnPress': createElem('audio', { 'src': 'sfx/btn-press.wav', 'volume': 0.75 }),
+			'btnHover': createElem('audio', { 'src': 'sfx/btn-hover.wav', 'volume': 0.1 }),
+			'btnPress': createElem('audio', { 'src': 'sfx/btn-press.wav', 'volume': 0.1 }),
 			'step': [
 				createElem('audio', { 'src': 'sfx/step.wav', 'volume': 1.0 }),
 				createElem('audio', { 'src': 'sfx/step.wav', 'volume': 1.0 })
 			],
-			'coin': createElem('audio', { 'src': 'sfx/coin.wav', 'volume': 0.8 })
+			'coin': [
+				createElem('audio', { 'src': 'sfx/coin.wav', 'volume': 0.2 }),
+				createElem('audio', { 'src': 'sfx/coin.wav', 'volume': 0.2 }),
+				createElem('audio', { 'src': 'sfx/coin.wav', 'volume': 0.2 }),
+				createElem('audio', { 'src': 'sfx/coin.wav', 'volume': 0.2 })
+			]
 		},
 		'last': {
 			'fpsCounter': 0,
-			'step': 0
+			'step': 0,
+			'tick': 0,
+			'tickCounter': 0,
 		},
 		'steps': 0,
 		'frame': function() {
-			this.fpsCounter.frames ++;
 			var now = new Date().getTime();
 			if(now > this.last.fpsCounter + 999) {
 				this.last.fpsCounter = now;
 				this.fpsCounter.fps = this.fpsCounter.frames;
 				this.fpsCounter.frames = 0;
 			}
+			this.fpsCounter.frames ++;
 			requestAnimationFrame(this.frame.bind(this));
 			this.uiContext.clearRect(0, 0, this.width, this.height);
 			this.context.clearRect(0, 0, this.width, this.height);
@@ -100,113 +120,171 @@
 			this.context.fillRect(0, 0, this.width, this.height);
 			this.drawMap(this.camera.x, this.camera.y);
 			this.drawText(this.tsize, this.height - this.tsize * 2, 
-						  this.fpsCounter.fps + ' fps - ' + this.coins + ' coins - ' + (~~this.player.health) + ' health', 
+						 	this.fpsCounter.fps + ' fps (' + this.tickCounter.tps + ' tps) - ' + 
+						 	this.coins + ' coins - ' + (~~this.player.health) + ' health', 
 						 false);
-			if(this.player.health < 0)
+			if(this.player.health <= 0)
 				this.stage = 'dead';
 			switch(this.stage) {
 				case 'title':
+					document.documentElement.classList.add('paused');
 					this.doPrompt(this.strings[this.lang].start);
 					break;
 				case 'dead':
+					document.documentElement.classList.add('paused');
 					this.doPrompt(this.strings[this.lang].dead);
 					break;
 				case 'play':
-					var camSpeed = [
-						((this.player.x - this.width / 2) - this.camera.x) / 48,
-						((this.player.y - this.height / 2) - this.camera.y) / 48
-					];
-					this.camera.x += camSpeed[0];
-					this.camera.y += camSpeed[1];
+					document.documentElement.classList.remove('paused');
+					if(!document.hasFocus())
+						this.stage = 'title';
 					// Draw player & set speed
-					var gridX = Math.min(Math.round(this.player.x / this.tsize), this.map.terrain.length - 1),
-						gridY = Math.min(Math.round(this.player.y / this.tsize), this.map.terrain[gridX].length - 1),
-						spd = 1;
-					this.context.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+					var gridX = Math.max(
+						Math.min(
+							Math.round(
+								this.player.x / this.tsize
+							),
+							this.map.terrain.length - 1
+						), 0
+					),	gridY = Math.max(
+						Math.min(
+							Math.round(
+								this.player.y / this.tsize
+							),
+							this.map.terrain[gridX].length - 1
+						), 0
+					);
 					this.context.lineWidth = 2;
+					this.context.strokeStyle = 'rgba(0, 0, 0, 0.25)';
 					this.context.strokeRect(
 										gridX * this.tsize - this.camera.x,
 										gridY * this.tsize - this.camera.y,
 										this.tsize, this.tsize
 									);
-					this.context.fillStyle = 'rgba(0, 0, 0, 0.25)';
-					this.context.fillRect(
-										this.player.x - this.camera.x + this.tsize * 0.125,
-										this.player.y - this.camera.y + this.tsize * 0.125,
-										this.tsize * 0.75, this.tsize * 0.75
-									);
-					this.uiContext.fillStyle = '#09F';
-					this.uiContext.fillRect(
-										this.player.x - this.camera.x + this.tsize * 0.125,
-										this.player.y - this.camera.y + this.tsize * 0.125,
-										this.tsize * 0.75, this.tsize * 0.75
-									);
-					// Get coins
-					for(var c in this.map.coins) {
-						var coin = this.map.coins[c];
-						if(Math.pow(coin[0] - this.player.x, 2) + Math.pow(coin[1] - this.player.y, 2) < this.tsize * this.tsize) {
-							this.coins += coin[2];
-							this.sfx.coin.play();
-							this.map.coins.splice(c, 1);
-							break;
-						}
-					};
-					// Healing
-					var hth = 1.05 - (this.player.health / this.player.maxHealth);
-					switch(this.map.terrain[gridX][gridY][2]) {
-						case '#A84':
-							spd = 0.9;
-							break;
-						case '#039':
-							spd = 0.6;
-							this.player.health -= hth * 1.125;
-							break;
+					this.update(gridX, gridY);
+					if(this.img.player.complete) {
+						var facing = 1;
+						if(keyboard.w)
+							facing = 0;
+						if(keyboard.s)
+							facing = 1;
+						if(keyboard.a)
+							facing = 2;
+						if(keyboard.d)
+							facing = 3;
+						this.context.fillStyle = 'rgba(0, 0, 0, 0.25)';
+						this.context.fillRect(
+											this.player.x - this.camera.x + this.tsize * 0.25,
+											this.player.y - this.camera.y + this.tsize * 0.25,
+											this.tsize * 0.5, this.tsize * 1
+										);
+						this.uiContext.drawImage(this.img.player, 0, facing * 24, 24, 24,
+											this.player.x - this.camera.x - this.tsize * 0.125,
+											this.player.y - this.camera.y - this.tsize * 0.125,
+											this.tsize * 1.5, this.tsize * 1.5
+										);
+												 
+					} else {
+						this.context.fillStyle = 'rgba(0, 0, 0, 0.25)';
+						this.context.fillRect(
+											this.player.x - this.camera.x + this.tsize * 0.125,
+											this.player.y - this.camera.y + this.tsize * 0.125,
+											this.tsize * 0.75, this.tsize * 0.75
+										);
+						this.uiContext.fillStyle = '#09F';
+						this.uiContext.fillRect(
+											this.player.x - this.camera.x + this.tsize * 0.125,
+											this.player.y - this.camera.y + this.tsize * 0.125,
+											this.tsize * 0.75, this.tsize * 0.75
+										);
 					}
-					this.player.health = Math.min(this.player.health + hth, this.player.maxHealth);
-					// Move player
-					if(keyboard.a)
-						this.player.x -= spd * 3;
-					if(keyboard.w)
-						this.player.y -= spd * 3;
-					if(keyboard.d)
-						this.player.x += spd * 3;
-					if(keyboard.s)
-						this.player.y += spd * 3;
-					if((Math.round(this.player.x / this.tsize) != gridX
-					 || Math.round(this.player.y / this.tsize) != gridY)
-					 && new Date().getTime() > this.last.step + 150) {
-						this.sfx.step[++this.steps%2].play();
-						this.last.step = new Date().getTime();
-					}
-					this.player.y = Math.max(
-						Math.min(
-							this.height * (this.n) - this.tsize,
-							this.player.y
-						),
-						0
-					);
-					this.player.x = Math.max(
-						Math.min(
-							this.width * (this.n) - this.tsize,
-							this.player.x
-						),
-						0
-					);
-					this.camera.y = Math.max(
-						Math.min(
-							this.height * (this.n - 1),
-							this.camera.y
-						),
-						0
-					);
-					this.camera.x = Math.max(
-						Math.min(
-							this.width * (this.n - 1),
-							this.camera.x
-						),
-						0
-					);
 					break;
+			}
+		},
+		'update': function(gridX, gridY) {
+			var now = new Date().getTime(),
+				ticks = Math.round((now - (this.last.tick || now)) / (20));
+			var spd = 1;
+			this.last.tick = now;
+			this.tickCounter.ticks += ticks;
+			if(this.last.tickCounter < now - 999) {
+				this.last.tickCounter = now;
+				this.tickCounter.tps = this.tickCounter.ticks;
+				this.tickCounter.ticks = 0;
+			}
+			for(var i = 0; i < ticks; i++) {
+				// Get coins
+				for(var c in this.map.coins) {
+					var coin = this.map.coins[c];
+					if(Math.pow(coin[0] - this.player.x, 2) + Math.pow(coin[1] - this.player.y, 2) < this.tsize * this.tsize) {
+						this.coins += coin[2];
+						this.player.health += coin[2];
+						this.sfx.coin[~~(this.coins % this.sfx.coin.length)].play();
+						this.map.coins.splice(c, 1);
+						break;
+					}
+				};
+				// Healing
+				var hth = 0.8;
+				switch(this.map.terrain[gridX][gridY][2]) {
+					case '#A84':
+						spd = 0.9;
+						break;
+					case '#039':
+						spd = 0.6;
+						this.player.health -= hth * 0.125;
+						break;
+				}
+				this.player.health = Math.min(this.player.health, this.player.maxHealth);
+				// Move player
+				if(keyboard.a)
+					this.player.x -= spd * 3;
+				if(keyboard.w)
+					this.player.y -= spd * 3;
+				if(keyboard.d)
+					this.player.x += spd * 3;
+				if(keyboard.s)
+					this.player.y += spd * 3;
+				if((Math.round(this.player.x / this.tsize) != gridX
+				 || Math.round(this.player.y / this.tsize) != gridY)
+				 && new Date().getTime() > this.last.step + 150) {
+					this.sfx.step[++this.steps%2].play();
+					this.last.step = new Date().getTime();
+				}
+				this.player.y = Math.max(
+					Math.min(
+						this.height * (this.n) - this.tsize,
+						this.player.y
+					),
+					0
+				);
+				this.player.x = Math.max(
+					Math.min(
+						this.width * (this.n) - this.tsize,
+						this.player.x
+					),
+					0
+				);
+				var camSpeed = [
+					((this.player.x - this.width / 2) - this.camera.x) / 48,
+					((this.player.y - this.height / 2) - this.camera.y) / 48
+				];
+				this.camera.x += camSpeed[0];
+				this.camera.y += camSpeed[1];
+				this.camera.y = Math.max(
+					Math.min(
+						this.height * (this.n - 1),
+						this.camera.y
+					),
+					0
+				);
+				this.camera.x = Math.max(
+					Math.min(
+						this.width * (this.n - 1),
+						this.camera.x
+					),
+					0
+				);
 			}
 		},
 		'start': function() {
@@ -284,13 +362,21 @@
 				}
 			}
 			this.map.coins.forEach(function(t) {
-				//if(t[0] < ~~(pX / self.tsize) || t[0] > Math.ceil((pX + self.width) / self.tsize)
-				//|| t[1] < ~~(pY / self.tsize) || t[1] > Math.ceil((pY + self.height)/ self.tsize))
-				//	return;
+				if(t[0] < ~~(pX / 1) || t[0] > Math.ceil((pX + self.width) / 1)
+				|| t[1] < ~~(pY / 1) || t[1] > Math.ceil((pY + self.height)/ 1))
+					return;
 				self.context.fillStyle = 'rgba(0, 0, 0, 0.1)';
 				self.context.fillRect(t[0] - pX + self.tsize / 3, t[1] - pY + self.tsize / 3, self.tsize / 3, self.tsize / 3);
-				self.uiContext.fillStyle = '#CB0';
-				self.uiContext.fillRect(t[0] - pX + self.tsize / 3, t[1] - pY + self.tsize / 3, self.tsize / 3, self.tsize / 3);
+				
+				var f = ~~(new Date().getTime() / 150) % (self.img.coin.height / 16);
+				if(self.img.coin.complete) {
+					self.uiContext.drawImage(self.img.coin, 0, Math.abs(f * 16), 16, 16, 
+										 t[0] - pX + self.tsize / 4, t[1] - pY + self.tsize / 4, self.tsize / 2, self.tsize / 2);
+				} else {
+					self.uiContext.fillStyle = '#CB0';
+					self.uiContext.fillRect(t[0] - pX + self.tsize / 3, t[1] - pY + self.tsize / 3, self.tsize / 3, self.tsize / 3);
+				}
+				
 			});
 		},
 		'pick': function(arr, val) {
@@ -336,21 +422,17 @@
 				}
 				this.map.terrain.push(_);
 			}
-			for(var x = 0; x < this.width; x += this.tsize / this.n)
-				for(var y = 0; y < this.height; y += this.tsize / this.n)
-					if(this.noise.noise2D(
-						x * this.n / 500,
-						y * this.n / 500
-					) < -0.99) {
-						this.map.coins.push([x, y, 1]);
+			for(var x = 0; x < this.map.terrain.length; x ++) {
+				for(var y = 0; y < this.map.terrain[x].length; y ++) {
+					var noise = this.noise.noise2D(
+						x * this.tsize / 500,
+						y * this.tsize / 500
+					);
+					if(noise < -0.7) {
+						this.map.coins.push([x * this.tsize, y * this.tsize, 1]);
 					}
-			for(var c in this.map.coins)
-				for(var d in this.map.coins) {
-					var c1 = this.map.coins[c],
-						c2 = this.map.coins[d];
-					if(Math.pow(c1[0] - c2[0], 2) + Math.pow(c1[1] - c2[1], 2) < this.tsize*this.tsize)
-						this.map.coins.splice(d, 1);
 				}
+			}
 			// More setup crap
 			this.context.imageSmoothingEnabled = false;
 			this.uiContext.imageSmoothingEnabled = false;
