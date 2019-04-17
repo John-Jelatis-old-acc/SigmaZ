@@ -1,0 +1,36 @@
+{
+  "short_name": "Delta-Z",
+  "name": "Delta-Z",
+  "icons": [
+    {
+      "src": "/game/img/icon/64x.png",
+      "type": "image/png",
+      "sizes": "64x64"
+    },
+    {
+      "src": "/game/img/icon/128x.png",
+      "type": "image/png",
+      "sizes": "128x128"
+    },
+    {
+      "src": "/game/img/icon/192x.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/game/img/icon/512x.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    },
+    {
+      "src": "/game/img/icon/640x.png",
+      "type": "image/png",
+      "sizes": "640x640"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#001144",
+  "display": "fullscreen",
+  "scope": "/",
+  "theme_color": "#001144"
+}
