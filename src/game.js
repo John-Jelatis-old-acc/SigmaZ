@@ -1,5 +1,25 @@
 (function(self) {
 	'use strict';
+	if(!('forEach' in Array.prototype)) {
+		console.warn("Browser does not support [Array].forEach(...)");
+		Array.prototype.forEach = function(callback, bind) {
+			var cb = callback.bind(bind);
+			for(var i = 0; i < this.length; i++) {
+				cb(this[i], i, this);
+			}
+		};
+	}
+	if(!('keys' in Object)) {
+		console.warn("Browser does not support Object.keys(...)");
+		Object.keys = function(obj) {
+			if(obj == 'undefined')
+				throw obj;
+			return Object.getOwnPropertyNames(obj);
+		};
+	}
+})(this);
+(function(self) {
+	'use strict';
 	function createElem(t,d,w) {
 		var r = document.createElement(t), k = Object.keys(d || {});
 		if(d instanceof Object) for(var i = 0; i < k.length; i++)
@@ -26,16 +46,25 @@
 		'height': 540,
 		'map': {
 			'terrain': [],
-			'coins': []
+			'coins': [],
+			'potions': [],
 		},
 		'strings': {
 			'en': {
 				'start': 'press enter to play sigma-z',
-				'dead': 'you died - press enter to restart'
+				'dead': 'you died - press enter to restart',
+				'pause': 'paused - press enter to continue',
+				'itm': {
+					'potion_of': 'Potion of ${}',
+					'pot_speed': 'Speed',
+					'pot_health': 'Health',
+					'pot_invincible': 'Invincibility',
+					'pot_death': '5th Hour'
+				}
 			}
 		},
 		'lang': 'en',
-		'noise': new SimplexNoise(),
+		'noise': new SimplexNoise('7'),
 		'fpsCounter': {
 			'fps': 0,
 			'frames': 0
@@ -53,6 +82,40 @@
 			'font': createElem('img', { 'src': 'img/font.png' }),
 			'coin': createElem('img', { 'src': 'img/sigmacoin.png' }),
 			'player': {}, // createElem('img', { 'src': 'img/player.png' }),
+			'potion': {
+				'pot_speed': createElem('canvas', { 'width': 32, 'height': 32 }, { 'run': function(e) {
+					var i = createElem('img', { 'src': 'img/potions.png' }),
+						c = e.getContext('2d', { 'antialias': false, 'alpha': true });
+					c.imageSmoothingEnabled = false;
+					i.onload = function() {
+						c.drawImage(i, 0, 0, 16, 16, 0, 0, e.width, e.height);
+					};
+				} }),
+				'pot_health': createElem('canvas', { 'width': 32, 'height': 32 }, { 'run': function(e) {
+					var i = createElem('img', { 'src': 'img/potions.png' }),
+						c = e.getContext('2d', { 'antialias': false, 'alpha': true });
+					c.imageSmoothingEnabled = false;
+					i.onload = function() {
+						c.drawImage(i, 0, 16, 16, 16, 0, 0, e.width, e.height);
+					};
+				} }),
+				'pot_invincible': createElem('canvas', { 'width': 32, 'height': 32 }, { 'run': function(e) {
+					var i = createElem('img', { 'src': 'img/potions.png' }),
+						c = e.getContext('2d', { 'antialias': false, 'alpha': true });
+					c.imageSmoothingEnabled = false;
+					i.onload = function() {
+						c.drawImage(i, 16, 0, 16, 16, 0, 0, e.width, e.height);
+					};
+				} }),
+				'pot_death': createElem('canvas', { 'width': 32, 'height': 32 }, { 'run': function(e) {
+					var i = createElem('img', { 'src': 'img/potions.png' }),
+						c = e.getContext('2d', { 'antialias': false, 'alpha': false });
+					c.imageSmoothingEnabled = false;
+					i.onload = function() {
+						c.drawImage(i, 16, 16, 16, 16, 0, 0, e.width, e.height);
+					};
+				} }),
+			},
 			'#039': createElem('canvas', { 'width': 32, 'height': 32 }, { 'run': function(e) {
 				var i = createElem('img', { 'src': 'img/terrain.png' }),
 					c = e.getContext('2d', { 'antialias': false, 'alpha': false });
@@ -78,6 +141,10 @@
 				};
 			} }),
 		},
+		'effects': [
+			// ['pot_invincible', new Date().getTime() + 5000],
+			// ['pot_speed', new Date().getTime() + 5000]
+		],
 		'colours': {
 			'#060': 70,
 			'#A84': 10,
@@ -119,10 +186,6 @@
 			this.context.fillStyle = '#000';
 			this.context.fillRect(0, 0, this.width, this.height);
 			this.drawMap(this.camera.x, this.camera.y);
-			this.drawText(this.tsize, this.height - this.tsize * 2, 
-						 	this.fpsCounter.fps + ' fps (' + this.tickCounter.tps + ' tps) - ' + 
-						 	this.coins + ' coins - ' + (~~this.player.health) + ' health', 
-						 false);
 			if(this.player.health <= 0)
 				this.stage = 'dead';
 			switch(this.stage) {
@@ -130,14 +193,16 @@
 					document.documentElement.classList.add('paused');
 					this.doPrompt(this.strings[this.lang].start);
 					break;
+				case 'pause':
+					document.documentElement.classList.add('paused');
+					this.doPrompt(this.strings[this.lang].pause);
+					break;
 				case 'dead':
 					document.documentElement.classList.add('paused');
 					this.doPrompt(this.strings[this.lang].dead);
 					break;
 				case 'play':
 					document.documentElement.classList.remove('paused');
-					if(!document.hasFocus())
-						this.stage = 'title';
 					// Draw player & set speed
 					var gridX = Math.max(
 						Math.min(
@@ -154,51 +219,65 @@
 							this.map.terrain[gridX].length - 1
 						), 0
 					);
-					this.context.lineWidth = 2;
-					this.context.strokeStyle = 'rgba(0, 0, 0, 0.25)';
-					this.context.strokeRect(
-										gridX * this.tsize - this.camera.x,
-										gridY * this.tsize - this.camera.y,
-										this.tsize, this.tsize
-									);
 					this.update(gridX, gridY);
-					if(this.img.player.complete) {
-						var facing = 1;
-						if(keyboard.w)
-							facing = 0;
-						if(keyboard.s)
-							facing = 1;
-						if(keyboard.a)
-							facing = 2;
-						if(keyboard.d)
-							facing = 3;
-						this.context.fillStyle = 'rgba(0, 0, 0, 0.25)';
-						this.context.fillRect(
-											this.player.x - this.camera.x + this.tsize * 0.25,
-											this.player.y - this.camera.y + this.tsize * 0.25,
-											this.tsize * 0.5, this.tsize * 1
-										);
-						this.uiContext.drawImage(this.img.player, 0, facing * 24, 24, 24,
-											this.player.x - this.camera.x - this.tsize * 0.125,
-											this.player.y - this.camera.y - this.tsize * 0.125,
-											this.tsize * 1.5, this.tsize * 1.5
-										);
-												 
-					} else {
-						this.context.fillStyle = 'rgba(0, 0, 0, 0.25)';
-						this.context.fillRect(
-											this.player.x - this.camera.x + this.tsize * 0.125,
-											this.player.y - this.camera.y + this.tsize * 0.125,
-											this.tsize * 0.75, this.tsize * 0.75
-										);
-						this.uiContext.fillStyle = '#09F';
-						this.uiContext.fillRect(
-											this.player.x - this.camera.x + this.tsize * 0.125,
-											this.player.y - this.camera.y + this.tsize * 0.125,
-											this.tsize * 0.75, this.tsize * 0.75
-										);
-					}
+					this.drawPlayer(gridX, gridY);
 					break;
+			}
+			this.drawHud();
+		},
+		'drawHud': function() {
+			this.drawText(this.tsize, this.height - this.tsize * 2, 
+						 	this.fpsCounter.fps + ' fps (' + this.tickCounter.tps + ' tps) - ' + 
+						 	this.coins + ' coins - ' + (~~this.player.health) + ' health', 
+						 false);
+			// Potion effects
+			this.effects.forEach(function(pot, i) {
+				this.uiContext.drawImage(this.img.potion[pot[0]], (i + 1) * this.tsize, this.tsize, this.tsize, this.tsize);
+			}, this);
+		},
+		'drawPlayer': function(gridX, gridY) {
+			this.context.lineWidth = 2;
+			this.context.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+			this.context.strokeRect(
+								gridX * this.tsize - this.camera.x,
+								gridY * this.tsize - this.camera.y,
+								this.tsize, this.tsize
+							);
+			if(this.img.player.complete) {
+				var facing = 1;
+				if(keyboard.w)
+					facing = 0;
+				if(keyboard.s)
+					facing = 1;
+				if(keyboard.a)
+					facing = 2;
+				if(keyboard.d)
+					facing = 3;
+				this.context.fillStyle = 'rgba(0, 0, 0, 0.25)';
+				this.context.fillRect(
+									this.player.x - this.camera.x + this.tsize * 0.25,
+									this.player.y - this.camera.y + this.tsize * 0.25,
+									this.tsize * 0.5, this.tsize * 1
+								);
+				this.uiContext.drawImage(this.img.player, 0, facing * 24, 24, 24,
+									this.player.x - this.camera.x - this.tsize * 0.125,
+									this.player.y - this.camera.y - this.tsize * 0.125,
+									this.tsize * 1.5, this.tsize * 1.5
+								);
+
+			} else {
+				this.context.fillStyle = 'rgba(0, 0, 0, 0.25)';
+				this.context.fillRect(
+									this.player.x - this.camera.x + this.tsize * 0.125,
+									this.player.y - this.camera.y + this.tsize * 0.125,
+									this.tsize * 0.75, this.tsize * 0.75
+								);
+				this.uiContext.fillStyle = '#09F';
+				this.uiContext.fillRect(
+									this.player.x - this.camera.x + this.tsize * 0.125,
+									this.player.y - this.camera.y + this.tsize * 0.125,
+									this.tsize * 0.75, this.tsize * 0.75
+								);
 			}
 		},
 		'update': function(gridX, gridY) {
@@ -212,26 +291,55 @@
 				this.tickCounter.tps = this.tickCounter.ticks;
 				this.tickCounter.ticks = 0;
 			}
-			for(var i = 0; i < ticks; i++) {
-				// Get coins
-				for(var c in this.map.coins) {
-					var coin = this.map.coins[c];
+			if(!document.hasFocus()) {
+				this.last.tickCounter = now;
+				this.tickCounter.ticks = 0;
+				this.stage = 'pause';
+				return;
+			}
+			// Limited ticks as to prevent crashing
+			for(var i = 0; i < Math.min(ticks, 60); i++) {
+				// Get coins & potion effects
+				this.map.coins.forEach(function(coin, c) {
 					if(Math.pow(coin[0] - this.player.x, 2) + Math.pow(coin[1] - this.player.y, 2) < this.tsize * this.tsize) {
 						this.coins += coin[2];
 						this.player.health += coin[2];
 						this.sfx.coin[~~(this.coins % this.sfx.coin.length)].play();
 						this.map.coins.splice(c, 1);
-						break;
+						// return;
 					}
-				};
+				}, this);
+				this.map.potions.forEach(function(potion, i) {
+					if(Math.pow(potion[0] - this.player.x, 2) + Math.pow(potion[1] - this.player.y, 2) < this.tsize * this.tsize) {
+						this.effects.push([potion[2], potion[3]]);
+						// this.sfx.potion.play();
+						this.map.potions.splice(i, 1);
+						// return;
+					}
+				}, this);
+				// Potions
+				this.effects.forEach(function(pot, i) {
+					if(--pot[1] <= 0) {
+						this.effects.splice(i, 1);
+					};
+					switch(pot[0]) {
+						case 'pot_speed':
+							spd = 2;
+							break;
+						case 'pot_invincible':
+						case 'pot_health':
+							this.player.health = this.player.maxHealth;
+							break;
+					}
+				}, this);
 				// Healing
 				var hth = 0.8;
 				switch(this.map.terrain[gridX][gridY][2]) {
 					case '#A84':
-						spd = 0.9;
+						spd *= 0.9;
 						break;
 					case '#039':
-						spd = 0.6;
+						spd *= 0.6;
 						this.player.health -= hth * 0.125;
 						break;
 				}
@@ -347,7 +455,6 @@
 			}
 		},
 		'drawMap': function(pX, pY) {
-			var self = this;
 			for(var x = ~~(pX / this.tsize); x < Math.ceil((pX + this.width) / this.tsize); x++) {
 				for(var y = ~~(pY / this.tsize); y < Math.ceil((pY + this.height) / this.tsize); y++) {
 					var t = this.map.terrain[x][y];
@@ -361,23 +468,41 @@
 					}
 				}
 			}
-			this.map.coins.forEach(function(t) {
-				if(t[0] < ~~(pX / 1) || t[0] > Math.ceil((pX + self.width) / 1)
-				|| t[1] < ~~(pY / 1) || t[1] > Math.ceil((pY + self.height)/ 1))
+			this.map.potions.forEach(function(t) {
+				if(t[0] < ~~(pX / 1) || t[0] > Math.ceil((pX + this.width) / 1)
+				|| t[1] < ~~(pY / 1) || t[1] > Math.ceil((pY + this.height)/ 1))
 					return;
-				self.context.fillStyle = 'rgba(0, 0, 0, 0.1)';
-				self.context.fillRect(t[0] - pX + self.tsize / 3, t[1] - pY + self.tsize / 3, self.tsize / 3, self.tsize / 3);
+				this.context.fillStyle = 'rgba(0, 0, 0, 0.1)';
+				this.context.fillRect(
+								   t[0] - pX, 
+								   t[1] - pY, 
+								   this.tsize, 
+								   this.tsize
+								);
+				this.uiContext.drawImage(this.img.potion[t[2]], 
+								   t[0] - pX, 
+								   t[1] - pY, 
+								   this.tsize, 
+								   this.tsize
+								);
+			}, this);
+			this.map.coins.forEach(function(t) {
+				if(t[0] < ~~(pX / 1) || t[0] > Math.ceil((pX + this.width) / 1)
+				|| t[1] < ~~(pY / 1) || t[1] > Math.ceil((pY + this.height)/ 1))
+					return;
+				this.context.fillStyle = 'rgba(0, 0, 0, 0.1)';
+				this.context.fillRect(t[0] - pX + this.tsize / 3, t[1] - pY + this.tsize / 3, this.tsize / 3, this.tsize / 3);
 				
-				var f = ~~(new Date().getTime() / 150) % (self.img.coin.height / 16);
-				if(self.img.coin.complete) {
-					self.uiContext.drawImage(self.img.coin, 0, Math.abs(f * 16), 16, 16, 
-										 t[0] - pX + self.tsize / 4, t[1] - pY + self.tsize / 4, self.tsize / 2, self.tsize / 2);
+				var f = ~~(new Date().getTime() / 150) % (this.img.coin.height / 16);
+				if(this.img.coin.complete) {
+					this.uiContext.drawImage(this.img.coin, 0, Math.abs(f * 16), 16, 16, 
+										 t[0] - pX + this.tsize / 4, t[1] - pY + this.tsize / 4, this.tsize / 2, this.tsize / 2);
 				} else {
-					self.uiContext.fillStyle = '#CB0';
-					self.uiContext.fillRect(t[0] - pX + self.tsize / 3, t[1] - pY + self.tsize / 3, self.tsize / 3, self.tsize / 3);
+					this.uiContext.fillStyle = '#CB0';
+					this.uiContext.fillRect(t[0] - pX + this.tsize / 3, t[1] - pY + this.tsize / 3, this.tsize / 3, this.tsize / 3);
 				}
 				
-			});
+			}, this);
 		},
 		'pick': function(arr, val) {
 			var r = arr.things,
@@ -428,8 +553,14 @@
 						x * this.tsize / 500,
 						y * this.tsize / 500
 					);
-					if(noise < -0.7) {
+					if(noise < -0.6667 && noise > -0.9175) {
 						this.map.coins.push([x * this.tsize, y * this.tsize, 1]);
+					} else if(noise <= -0.9175) {
+						var type = [
+							'pot_invincible',
+							'pot_speed'
+						], n = this.noise.noise2D(x, y);
+						this.map.potions.push([x * this.tsize, y * this.tsize, type[n < 0 ? 0 : 1], 500]);
 					}
 				}
 			}
@@ -493,6 +624,7 @@
 			case 32:
 				switch(game.stage) {
 					case 'title': 
+					case 'pause': 
 						game.start();
 						break;
 					case 'dead':
@@ -500,12 +632,16 @@
 						break;
 					case 'play':
 						keyboard.projectile = true;
-					break;
+						break;
 				}
+				break;
 		}
 	});
 	self.addEventListener('DOMContentLoaded', function(e) {
 		if(e.isTrusted)
 			game.init();
+		if(self.navigator.userAgent.match()) {
+			//
+		};
 	});
 })(this);
