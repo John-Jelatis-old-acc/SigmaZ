@@ -3,27 +3,27 @@
   "name": "Sigma-Z",
   "icons": [
     {
-      "src": "img/icon/64x.png",
+      "src": "/SigmaZ/img/icon/64x.png",
       "type": "image/png",
       "sizes": "64x64"
     },
     {
-      "src": "img/icon/128x.png",
+      "src": "/SigmaZ/img/icon/128x.png",
       "type": "image/png",
       "sizes": "128x128"
     },
     {
-      "src": "img/icon/192x.png",
+      "src": "/SigmaZ/img/icon/192x.png",
       "type": "image/png",
       "sizes": "192x192"
     },
     {
-      "src": "img/icon/512x.png",
+      "src": "/SigmaZ/img/icon/512x.png",
       "type": "image/png",
       "sizes": "512x512"
     },
     {
-      "src": "img/icon/640x.png",
+      "src": "/SigmaZ/img/icon/640x.png",
       "type": "image/png",
       "sizes": "640x640"
     }
@@ -31,6 +31,6 @@
   "start_url": "/SigmaZ/?source=pwa",
   "background_color": "#000104",
   "display": "fullscreen",
-  "scope": "/SigmaZ/",
+  "scope": "/",
   "theme_color": "#000104"
 }
